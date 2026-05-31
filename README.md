@@ -59,11 +59,5 @@ uv pip install -r requirements.txt
 ## Escalabilidad del ATmega328P
 
 El ATmega328P actúa como capa de actuadores desacoplada. Al concentrar el control
-de periféricos en él, escalar el proyecto es directo sin modificar la lógica de la Pi:
-
-- Agregar LEDs de estado (victoria / derrota)
-- Sensores de presión en los dedos (feedback táctil)
-- Pantalla OLED I2C para mostrar el marcador
-- Segundo canal UART para comunicación bidireccional
-
+de periféricos en él, escalar el proyecto es directo sin modificar la lógica de la Rasp:
 ---
