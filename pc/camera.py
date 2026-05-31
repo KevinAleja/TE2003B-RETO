@@ -114,9 +114,9 @@ def classify_gesture(landmarks) -> Gestos:
     if index and middle and not ring and not pinky:
         return Gestos.SCISSORS
     if index and middle and ring and pinky:
-        return Gestos.PAPEL
+        return Gestos.PAPER
     if not index and not middle and not ring and not pinky:
-        return Gestos.ROCA
+        return Gestos.ROCK
     return Gestos.UNKNOWN
 
 

@@ -14,8 +14,8 @@ class Modo(Enum):
 
 
 class Gestos(Enum):
-    ROCA     = "piedra"
-    PAPEL    = "papel"
+    ROCK     = "piedra"
+    PAPER    = "papel"
     SCISSORS = "tijera"
     UNKNOWN  = "desconocido"
 

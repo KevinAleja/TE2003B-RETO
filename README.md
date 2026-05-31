@@ -75,6 +75,7 @@ El Hardware consta de:
 
 
 El ATmega328P actúa como capa de actuadores desacoplada. Al concentrar el control
+<<<<<<< HEAD
 de periféricos en él, escalar el proyecto es directo sin modificar la lógica de la Pi:
 
 A futuro implementaciones que se quieran hacer como:
@@ -83,3 +84,7 @@ A futuro implementaciones que se quieran hacer como:
 - Una segunda mano 
 
 Se podrían hacer como modulos independientes orquestados por la RaspBerry 
+=======
+de periféricos en él, escalar el proyecto es directo sin modificar la lógica de la Rasp:
+---
+>>>>>>> e838216090af9c4ca97eb04037eb8414fdfc6e8b
