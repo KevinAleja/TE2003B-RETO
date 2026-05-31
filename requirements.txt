@@ -1,0 +1,11 @@
+# Requerimientos necesarios para iniciarl el proyecto
+# Para instalar las dependencias, ejecuta:
+# pip install -r requirements.txt
+
+# Se pueden ver más detalles en el README.md :)
+mediapipe>=0.10.21
+opencv-python>=4.10.0
+numpy>=1.26.0
+pyzmq>=26.0.0
+pyserial>=3.5
+pytest>=8.0.0
