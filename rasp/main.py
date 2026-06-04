@@ -1,32 +1,14 @@
-"""
-pi/main.py — Servidor socket + lógica del juego
-================================================
-Corre ÚNICAMENTE en la Raspberry Pi.
-
-Responsabilidades:
-    - Servidor TCP que recibe mensajes de la PC
-    - Lógica de piedra / papel / tijera
-    - Envío de comandos al ATmega328P vía UART serial
-
-Flujo:
-    PC  →(socket TCP)→  main.py  →(UART)→  ATmega328P  →(PWM)→  Servos + Buzzer
-
-Uso:
-    python main.py
-    python main.py --port 5000 --serial /dev/ttyAMA0 --baud 115200
-    python main.py --no-serial   # prueba sin ATmega conectado
-"""
-
 import argparse
 import json
 import random
 import socket
 import sys
+import yaml
 from enum import Enum
 from pathlib import Path
 
 # Importar protocolo compartido
-from rasp.protocolo import Gestos, Modo, decode
+from protocolo import Gestos, Modo, decode
 
 # pyserial — solo disponible en la Pi
 try:
@@ -41,9 +23,17 @@ DEFINICION DE CONSTANTES Y CONFIGURACION DEL PROTOCOLO
 ==========================================================
 """
 
-DEFAULT_PORT        = 5000
-DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"
-DEFAULT_BAUD        = 115200
+# Abrimos el YAML
+with open(r"C:\Users\kevin\Documents\ITESM\Diseno_de_Sistemas_en_Chip\RETO_FINAL\params.yaml", "r") as file:
+    config = yaml.safe_load(file)
+
+# Configuración de la IP y puerto del socket TCP - Accedemos a través del archivo YAML
+DEFAULT_HOST = config["socket"]["host"]
+DEFAULT_PORT = config["socket"]["port"]
+
+# Configuración del UART
+DEFAULT_SERIAL_PORT = config["serial"]["port"]
+DEFAULT_BAUD = config["serial"]["baudrate"]
 
 
 # ─────────────────────────────────────────────
@@ -126,18 +116,17 @@ class SerialController:
         self._write(bytes([cmd]))
         print(f"[Serial -> ATmega] CMD: 0x{cmd:02X} ({robot_gesture.value})")
 
-    def send_mirror_cmd(self, angles: list[int]) -> None:
-        """Envía 0x04 seguido de 6 bytes de ángulos (0-180)."""
+    def send_mirror_cmd(self, angles: list[int]):
         payload = bytes([ATmegaCmd.MIRROR] + [int(a) for a in angles])
         self._write(payload)
 
-    def _write(self, data: bytes) -> None:
+    def _write(self, data: bytes):
         if self._ser and self._ser.is_open:
             self._ser.write(data)
         else:
             print(f"[Serial SIMULADO] {list(data)}")
 
-    def close(self) -> None:
+    def close(self):
         if self._ser and self._ser.is_open:
             self._ser.close()
 
@@ -152,10 +141,10 @@ def handle_message(data: bytes, serial_ctrl: SerialController) -> None:
         print(f"[Error] Mensaje inválido: {e}")
         return
 
-    mode = msg.get("mode")
+    mode = msg.get("modo")
 
     if mode == Modo.GAME.value:
-        gesture_str = msg.get("gesture", "unknown")
+        gesture_str = msg.get("jugada", "desconocido")
         try:
             player = Gestos(gesture_str)
         except ValueError:
@@ -174,7 +163,7 @@ def handle_message(data: bytes, serial_ctrl: SerialController) -> None:
         serial_ctrl.send_game_cmd(robot)
 
     elif mode == Modo.MIRROR.value:
-        angles = msg.get("angUlos", [90] * 6)
+        angles = msg.get("angulos", [90] * 6)
         serial_ctrl.send_mirror_cmd(angles)
         # En mirror no imprimimos cada frame para no saturar la consola
 
@@ -255,4 +244,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try: 
+        main()
+    except Exception as e:
+        print(f"[Error fatal] {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n[Server] Apagando...")
+        sys.exit(0)

@@ -1,26 +1,17 @@
 """
-pc/devices.py — Visión computacional + cliente socket
-======================================================
-Corre ÚNICAMENTE en la PC.
+Devices.py contiene toda la logica para la detección de la mano, 
+clasificación de gestos, cálculo de ángulos y comunicación socket
+ con la Raspberry Pi. Es el núcleo del procesamiento de visión
+ computacional y la interfaz con el hardware.
 
-Responsabilidades:
-    - Captura de webcam
-    - Detección de landmarks con MediaPipe
-    - Clasificación de gestos (piedra / papel / tijera)
-    - Cálculo de ángulos para modo mirror
-    - Envío de datos a la Raspberry Pi vía socket TCP
-
-Lo que NO hace este archivo:
-    - Lógica del juego (quién ganó, jugada del robot) → eso es la Pi
-    - Control de servos                               → eso es el ATmega
-
-Uso standalone para pruebas sin Pi:
+Uso para pruebas sin Rasp:
     python devices.py --no-socket
 
-Uso normal (con Pi conectada):
+Uso normal (con Rasp conectada):
     python devices.py --host 192.168.1.XXX --port 5000
 """
 
+# Librerias 
 import argparse
 import json
 import socket
@@ -41,38 +32,29 @@ sys.path.append(str(Path(__file__).parent.parent))
 from rasp.protocolo import Gestos, Modo, encode_game, encode_mirror
 
 
-# ─────────────────────────────────────────────
-# Constantes
-# ─────────────────────────────────────────────
 
+# Valores de los landmarks para las puntas y bases de los dedos
 FINGER_TIPS = [4, 8, 12, 16, 20]
 FINGER_MIDS = [3, 6, 10, 14, 18]
 
-DEFAULT_HOST = "192.168.1.139"
-DEFAULT_PORT = 5000
 
-
-# ─────────────────────────────────────────────
-# Modelo MediaPipe
-# ─────────────────────────────────────────────
-
+# Modelo de MediaPipe: Descarga y uso del modelo 
 def _get_model_path() -> str:
     model_path = Path("hand_landmarker.task")
     if not model_path.exists():
+        # Ruta al modelo de MediaPipe
         url = (
             "https://storage.googleapis.com/mediapipe-models/"
             "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
         )
-        print(f"Descargando modelo MediaPipe → {model_path} ...")
+        print(f"Descargando modelo MediaPipe -> {model_path} ...")
         urllib.request.urlretrieve(url, model_path)
         print("Modelo descargado.")
     return str(model_path)
 
 
-# ─────────────────────────────────────────────
-# Dibujo con OpenCV puro
-# ─────────────────────────────────────────────
-
+# Según la documentación de MediaPipe, el modelo de HandLandmarker devuelve 21 landmarks por mano.
+# aqui definimos las conexiones entre ellos para dibujar el esqueleto de la mano en la imagen.
 _HAND_CONNECTIONS = [
     (0,1),(1,2),(2,3),(3,4),
     (0,5),(5,6),(6,7),(7,8),
@@ -88,6 +70,7 @@ def _draw_landmarks(frame: np.ndarray, landmarks: list) -> None:
     for a, b in _HAND_CONNECTIONS:
         cv2.line(frame, pts[a], pts[b], (0, 200, 255), 2, cv2.LINE_AA)
     for i, (x, y) in enumerate(pts):
+        # Colores de la mano y de las puntas 
         color = (255, 255, 255) if i in (4, 8, 12, 16, 20) else (0, 180, 0)
         cv2.circle(frame, (x, y), 5, color, -1, cv2.LINE_AA)
         cv2.circle(frame, (x, y), 5, (0, 0, 0), 1, cv2.LINE_AA)
@@ -154,11 +137,6 @@ def compute_angles(landmarks) -> list[int]:
         finger_angle(16, 13),
         finger_angle(20, 17),
     ]
-
-
-# ─────────────────────────────────────────────
-# Cliente socket
-# ─────────────────────────────────────────────
 
 class SocketClient:
     """
@@ -230,7 +208,7 @@ class HandDetector:
         self._landmarker    = mp_vision.HandLandmarker.create_from_options(options)
         self._frame_ts_ms   = 0
 
-        # Estado interno modo juego
+        # Estado interno 
         self._current_gesture = Gestos.UNKNOWN
         self._gesture_start   = 0.0
         self._last_sent_at    = 0.0   # evita spam de envíos
@@ -264,8 +242,8 @@ class HandDetector:
         self._draw_ui(frame)
         return frame, payload
 
-    def set_mode(self, mode: Modo) -> None:
-        self.mode             = mode
+    def set_mode(self, modo):
+        self.mode             = modo
         self._current_gesture = Gestos.UNKNOWN
         self._gesture_start   = 0.0
 
@@ -299,9 +277,9 @@ class HandDetector:
 
     # ── Dibujo ──────────────────────────────────────────────────────────
 
-    def _draw_ui(self, frame: np.ndarray) -> None:
+    def _draw_ui(self, frame: np.ndarray):
         h, w = frame.shape[:2]
-        label = f"MODO: {'JUEGO' if self.mode == Modo.GAME else 'MIRROR'}"
+        label = f"MODO: {'JUEGO' if self.mode == Modo.GAME else 'Tracking'}"
         cv2.rectangle(frame, (0, 0), (w, 40), (30, 30, 30), -1)
         cv2.putText(frame, label, (10, 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
@@ -331,61 +309,3 @@ class HandDetector:
 
     def release(self):
         self._landmarker.close()
-
-
-# ─────────────────────────────────────────────
-# Ejecución principal
-# ─────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser(description="Mano Robótica — PC client")
-    parser.add_argument("--host",      default=DEFAULT_HOST, help="IP de la Raspberry Pi")
-    parser.add_argument("--port",      default=DEFAULT_PORT, type=int)
-    parser.add_argument("--no-socket", action="store_true",  help="Correr sin Pi (solo visión)")
-    parser.add_argument("--mirror",    action="store_true",  help="Arrancar en modo mirror")
-    args = parser.parse_args()
-
-    mode   = Modo.MIRROR if args.mirror else Modo.GAME
-    client = SocketClient(args.host, args.port, enabled=not args.no_socket)
-
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        raise RuntimeError("No se pudo abrir la webcam.")
-
-    detector = HandDetector(mode=mode)
-    print("Iniciando... Teclas: G=juego  M=mirror  Q=salir")
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame = cv2.flip(frame, 1)
-        annotated, payload = detector.process_frame(frame)
-
-        if payload is not None:
-            sent = client.send(payload)
-            msg  = json.loads(payload.decode("utf-8"))
-            tag  = "[→ Pi]" if sent else "[local]"
-            print(f"{tag} {msg}")
-
-        cv2.imshow("Mano Robotica — PC", annotated)
-
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
-            break
-        elif key == ord("g"):
-            detector.set_mode(Modo.GAME)
-            print("→ Modo JUEGO")
-        elif key == ord("m"):
-            detector.set_mode(Modo.MIRROR)
-            print("→ Modo MIRROR")
-
-    cap.release()
-    detector.release()
-    client.close()
-    cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    main()
