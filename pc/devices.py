@@ -1,48 +1,45 @@
 """
 Devices.py contiene toda la logica para la detección de la mano, 
 clasificación de gestos, cálculo de ángulos y comunicación socket
- con la Raspberry Pi. Es el núcleo del procesamiento de visión
- computacional y la interfaz con el hardware.
-
-Uso para pruebas sin Rasp:
-    python devices.py --no-socket
-
-Uso normal (con Rasp conectada):
-    python devices.py --host 192.168.1.XXX --port 5000
+con la Raspberry Pi. Es el núcleo del procesamiento de visión
+computacional y la interfaz con el hardware.
 """
 
-# Librerias 
-import argparse
 import json
 import socket
 import time
 import urllib.request
-from enum import Enum
 from pathlib import Path
 
 import cv2
 import mediapipe as mp
 import numpy as np
+import yaml
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
 import sys
-# Agregar la carpeta pc al path
-sys.path.append(str(Path(__file__).parent.parent)) 
+sys.path.append(str(Path(__file__).parent.parent))
 from rasp.protocolo import Gestos, Modo, encode_game, encode_mirror
 
+with open(r"C:\Users\kevin\Documents\ITESM\Diseno_de_Sistemas_en_Chip\RETO_FINAL\params.yaml", "r") as file:
+    config = yaml.safe_load(file)
+
+# Configuración del juego
+CONFIDENCE = config["game"]["confidence"]
+GAME_HOLD_SECONDS = config["game"]["hold_seconds"]
+TRACKING_CONFIDENCE = config["game"]["tracking_confidence"]
 
 
-# Valores de los landmarks para las puntas y bases de los dedos
+
 FINGER_TIPS = [4, 8, 12, 16, 20]
 FINGER_MIDS = [3, 6, 10, 14, 18]
 
 
-# Modelo de MediaPipe: Descarga y uso del modelo 
-def _get_model_path() -> str:
+# Carga el modelo de MediaPipe 
+def _get_model_path():
     model_path = Path("hand_landmarker.task")
     if not model_path.exists():
-        # Ruta al modelo de MediaPipe
         url = (
             "https://storage.googleapis.com/mediapipe-models/"
             "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
@@ -53,8 +50,6 @@ def _get_model_path() -> str:
     return str(model_path)
 
 
-# Según la documentación de MediaPipe, el modelo de HandLandmarker devuelve 21 landmarks por mano.
-# aqui definimos las conexiones entre ellos para dibujar el esqueleto de la mano en la imagen.
 _HAND_CONNECTIONS = [
     (0,1),(1,2),(2,3),(3,4),
     (0,5),(5,6),(6,7),(7,8),
@@ -64,36 +59,32 @@ _HAND_CONNECTIONS = [
     (5,9),(9,13),(13,17),
 ]
 
-def _draw_landmarks(frame: np.ndarray, landmarks: list) -> None:
+def _draw_landmarks(frame, landmarks):
     h, w = frame.shape[:2]
     pts = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
     for a, b in _HAND_CONNECTIONS:
         cv2.line(frame, pts[a], pts[b], (0, 200, 255), 2, cv2.LINE_AA)
     for i, (x, y) in enumerate(pts):
-        # Colores de la mano y de las puntas 
         color = (255, 255, 255) if i in (4, 8, 12, 16, 20) else (0, 180, 0)
         cv2.circle(frame, (x, y), 5, color, -1, cv2.LINE_AA)
         cv2.circle(frame, (x, y), 5, (0, 0, 0), 1, cv2.LINE_AA)
 
 
-# ─────────────────────────────────────────────
-# Detección de gestos
-# ─────────────────────────────────────────────
+# ── Detección de gestos ───────────────────────────────────────────
 
-def _fingers_extended(landmarks) -> list[bool]:
+def _fingers_extended(landmarks):
     extended = []
     thumb_tip  = landmarks[FINGER_TIPS[0]]
     thumb_base = landmarks[FINGER_MIDS[0]]
-    extended.append(thumb_tip.x < thumb_base.x)   # Pulgar (mano derecha)
+    extended.append(thumb_tip.x < thumb_base.x)
     for tip_idx, mid_idx in zip(FINGER_TIPS[1:], FINGER_MIDS[1:]):
         extended.append(landmarks[tip_idx].y < landmarks[mid_idx].y)
     return extended
 
 
-def classify_gesture(landmarks) -> Gestos:
+def classify_gesture(landmarks):
     ext = _fingers_extended(landmarks)
     index, middle, ring, pinky = ext[1], ext[2], ext[3], ext[4]
-
     if index and middle and not ring and not pinky:
         return Gestos.SCISSORS
     if index and middle and ring and pinky:
@@ -103,57 +94,50 @@ def classify_gesture(landmarks) -> Gestos:
     return Gestos.UNKNOWN
 
 
-# ─────────────────────────────────────────────
-# Cálculo de ángulos para modo mirror
-# ─────────────────────────────────────────────
+# Calculo de ángulos para modo espejo y poder transformar gestos de la mano a 
+# angulos de servo. La función compute_angles devuelve una lista de 5 ángulos (0-180)
 
-def _distance(a, b) -> float:
+def _distance(a, b):
     return np.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 
 
-def _wrist_angle(lm) -> int:
-    dx = lm[9].x - lm[0].x
-    dy = lm[9].y - lm[0].y
-    angle_deg = np.degrees(np.arctan2(-dy, dx))
-    return int(np.clip(np.interp(angle_deg, [-90, 90], [0, 180]), 0, 180))
-
-
-def compute_angles(landmarks) -> list[int]:
-    """Devuelve [wrist, thumb, index, middle, ring, pinky] en grados 0-180."""
+def compute_angles(landmarks):
+    """Devuelve [thumb, index, middle, ring, pinky] en grados 0-180."""
     lm        = landmarks
     palm_size = _distance(lm[0], lm[9])
     if palm_size < 1e-6:
-        return [90] * 6
+        return [90] * 5
 
-    def finger_angle(tip_idx, base_idx) -> int:
+    def finger_angle(tip_idx, base_idx):
         ratio = np.clip(_distance(lm[tip_idx], lm[base_idx]) / palm_size, 0.0, 1.5)
         return int(np.interp(ratio, [0.3, 1.4], [0, 180]))
 
     return [
-        _wrist_angle(lm),
-        finger_angle(4,  1),
-        finger_angle(8,  5),
-        finger_angle(12, 9),
-        finger_angle(16, 13),
-        finger_angle(20, 17),
+        finger_angle(4,  1),   # pulgar
+        finger_angle(8,  5),   # índice
+        finger_angle(12, 9),   # medio
+        finger_angle(16, 13),  # anular
+        finger_angle(20, 17),  # meñique
     ]
+
+
+# ── Socket client ─────────────────────────────────────────────────
 
 class SocketClient:
     """
     Wrapper sobre socket TCP con reconexión automática.
-    Si no hay Pi disponible (modo --no-socket), todas las operaciones
-    son no-op y el programa corre igual.
+    Si no hay Pi disponible (--no-socket), todas las operaciones son no-op.
     """
 
-    def __init__(self, host: str, port: int, enabled: bool = True):
+    def __init__(self, host, port, enabled = True):
         self.host    = host
         self.port    = port
         self.enabled = enabled
-        self._sock: socket.socket | None = None
+        self._sock= None
         if self.enabled:
             self._connect()
 
-    def _connect(self) -> None:
+    def _connect(self):
         try:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -164,7 +148,7 @@ class SocketClient:
             print(f"[Socket] No se pudo conectar: {e}. Corriendo sin Pi.")
             self._sock = None
 
-    def send(self, data: bytes) -> bool:
+    def send(self, data):
         if not self.enabled or self._sock is None:
             return False
         try:
@@ -176,23 +160,42 @@ class SocketClient:
             self._connect()
             return False
 
+    def receive(self):
+        """
+        Lee la respuesta de la Pi (non-blocking, timeout 50ms).
+        Devuelve el dict parseado o None si no hay datos / error.
+        """
+        if not self.enabled or self._sock is None:
+            return None
+        try:
+            self._sock.settimeout(0.2)
+            data = self._sock.recv(1024)
+            if data:
+                return json.loads(data.decode("utf-8"))
+        except (socket.timeout, OSError, json.JSONDecodeError):
+            pass
+        finally:
+            try:
+                self._sock.settimeout(3)
+            except OSError:
+                pass
+        return None
+
     def close(self) -> None:
         if self._sock:
             self._sock.close()
             self._sock = None
 
 
-# ─────────────────────────────────────────────
-# Clase principal: HandDetector
-# ─────────────────────────────────────────────
+# Detector de la mano
 
 class HandDetector:
     def __init__(
         self,
-        mode: Modo = Modo.GAME,
-        min_detection_confidence: float = 0.75,
-        min_tracking_confidence:  float = 0.75,
-        game_hold_seconds:        float = 1.5,
+        mode = Modo.GAME,
+        min_detection_confidence = CONFIDENCE,
+        min_tracking_confidence = TRACKING_CONFIDENCE,
+        game_hold_seconds = GAME_HOLD_SECONDS,
     ):
         self.mode              = mode
         self.game_hold_seconds = game_hold_seconds
@@ -205,19 +208,16 @@ class HandDetector:
             min_hand_presence_confidence  = min_detection_confidence,
             min_tracking_confidence       = min_tracking_confidence,
         )
-        self._landmarker    = mp_vision.HandLandmarker.create_from_options(options)
-        self._frame_ts_ms   = 0
-
-        # Estado interno 
+        self._landmarker      = mp_vision.HandLandmarker.create_from_options(options)
+        self._frame_ts_ms     = 0
         self._current_gesture = Gestos.UNKNOWN
         self._gesture_start   = 0.0
-        self._last_sent_at    = 0.0   # evita spam de envíos
+        self._last_sent_at    = 0.0
 
-    def process_frame(self, frame: np.ndarray) -> tuple[np.ndarray, bytes | None]:
+    def process_frame(self, frame: np.ndarray):
         """
-        Procesa un frame.
-        Devuelve (frame_anotado, payload_bytes | None)
-        payload_bytes es lo que hay que enviar por socket a la Pi.
+        Procesa un frame BGR.
+        Devuelve (frame_anotado, payload_bytes | None).
         """
         self._frame_ts_ms += 33
         rgb       = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -247,16 +247,19 @@ class HandDetector:
         self._current_gesture = Gestos.UNKNOWN
         self._gesture_start   = 0.0
 
-    # ── Internos ────────────────────────────────────────────────────────
+    def release(self):
+        self._landmarker.close()
 
-    def _process_game(self, landmarks, frame: np.ndarray) -> bytes | None:
+
+
+    def _process_game(self, landmarks, frame):
         gesture = classify_gesture(landmarks)
         now     = time.time()
 
         if gesture == Gestos.UNKNOWN:
             self._current_gesture = Gestos.UNKNOWN
             self._gesture_start   = 0.0
-            self._draw_gesture_label(frame, "---", 0, self.game_hold_seconds)
+            self._draw_gesture_label(frame, "---", 0)
             return None
 
         if gesture != self._current_gesture:
@@ -264,10 +267,9 @@ class HandDetector:
             self._gesture_start   = now
 
         hold = now - self._gesture_start
-        self._draw_gesture_label(frame, gesture.value, hold, self.game_hold_seconds)
-        self._draw_hold_bar(frame, hold, self.game_hold_seconds)
+        self._draw_gesture_label(frame, gesture.value, hold)
+        self._draw_hold_bar(frame, hold)
 
-        # Enviar solo cuando se cumple el hold y no se envió hace poco
         if hold >= self.game_hold_seconds and (now - self._last_sent_at) > 3.0:
             self._last_sent_at  = now
             self._gesture_start = now
@@ -275,25 +277,24 @@ class HandDetector:
 
         return None
 
-    # ── Dibujo ──────────────────────────────────────────────────────────
-
     def _draw_ui(self, frame: np.ndarray):
         h, w = frame.shape[:2]
-        label = f"MODO: {'JUEGO' if self.mode == Modo.GAME else 'Tracking'}"
+        label = f"MODO: {'JUEGO' if self.mode == Modo.GAME else 'TRACKING'}"
         cv2.rectangle(frame, (0, 0), (w, 40), (30, 30, 30), -1)
         cv2.putText(frame, label, (10, 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 180), 2)
 
-    def _draw_gesture_label(self, frame, label, hold, required):
+    def _draw_gesture_label(self, frame, label, hold=0) -> None:
         h = frame.shape[0]
         cv2.putText(frame, str(label), (10, h - 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
 
-    def _draw_hold_bar(self, frame, elapsed, required):
+    def _draw_hold_bar(self, frame, elapsed):
         h, w = frame.shape[:2]
-        bx, by, bh = 10, h - 40, 14
-        bw       = w - 20
-        progress = min(elapsed / required, 1.0) if required > 0 else 0
+        bx, by, bh  = 10, h - 40, 14
+        bw          = w - 20
+        required    = self.game_hold_seconds
+        progress    = min(elapsed / required, 1.0) if required > 0 else 0
         cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (60, 60, 60), -1)
         filled = int(bw * progress)
         if filled > 0:
@@ -301,11 +302,8 @@ class HandDetector:
             cv2.rectangle(frame, (bx, by), (bx + filled, by + bh), color, -1)
         cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (150, 150, 150), 1)
 
-    def _draw_mirror_overlay(self, frame, angles):
-        names = ["Muneca", "Pulgar", "Indice", "Medio ", "Anular", "Menique"]
+    def _draw_mirror_overlay(self, frame, angles) -> None:
+        names = ["Pulgar", "Indice", "Medio", "Anular", "Menique"]
         for i, (name, angle) in enumerate(zip(names, angles)):
             cv2.putText(frame, f"{name}: {angle:3d}°", (10, 60 + i * 26),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 230, 255), 1)
-
-    def release(self):
-        self._landmarker.close()

@@ -10,14 +10,16 @@ usando MediaPipe en la PC, transmite los comandos a una Raspberry Pi vía socket
 ---
 
 ## Arquitectura del sistema
-![imagen](C:\Users\kevin\Documents\ITESM\Diseno_de_Sistemas_en_Chip\RETO_FINAL\images\arquitectura_del_proyecto.png)
 
+![arquitectura](images/arquitectura_del_proyecto.png)
 
 ---
 
 ## Estructura del proyecto
+Los archivos estan divididos de la siguiente forma:
+![estructura](images/estructura.png)
 
-
+Donde cada nombre de la carpeta muestra donde se debe ejecutar el código y los archivos que contiene para dicha parte del proyecto.
 
 ---
 
@@ -29,6 +31,7 @@ Para la creación del ambiente virtual estoy usando UV pero sientete libre de us
 # Crea el entorno virtual con una versión de Python compatible
 uv venv --python 3.11
 
+
 # Activa el entorno
 # Linux/Raspbian:
 source .venv/bin/activate
@@ -37,6 +40,26 @@ source .venv/bin/activate
 
 # Instala todas las dependencias
 uv pip install -r requirements.txt
+```
+
+Para otro manejador de paquetes famosos como PIP:
+
+```bash 
+# Con pip
+python -m venv 
+
+# Para activar (en windows)
+.venv\Scripts\activate 
+# Si no funciona prueba con:
+.venv\Scripts\activate.ps1
+
+# Para activar en Linux/Raspbian:
+source .venv/bin/activate
+
+# instalar dependencias
+pip install -r requirements.txt
+
+
 ```
 
 ---
@@ -56,6 +79,20 @@ La comunicación entre los diferentes modulos del sistema se da mediante dos pri
 
 - protocolo UART para el envio de las poses/angulos que la mano debe realizar al microcontrolador 
 
+### Conexiómn con la rasp
+
+Se recomienda ejecutar el siguiente comando en la terminal para podere escanear la red y poder localizar la IP donde la Raspberry pi esta conectada.
+
+
+
+'''bash 
+1..254 | ForEach-Object {
+>>     $ip = "172.20.10.$_"
+>>     if (Test-Connection -ComputerName $ip -Count 1 -Quiet) {
+>>         Write-Host "Dispositivo encontrado: $ip" -ForegroundColor Green
+>>     }
+>> }
+'''
 ---
 
 ## Hardware

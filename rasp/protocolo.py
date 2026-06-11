@@ -3,40 +3,39 @@ Define las estructuras de datos que viajan por el socket TCP (aseguramos una com
 entre la PC y la Raspberry Pi, así como el formato de los mensajes JSON para tener 
 diccionarios claros y evitar errores.
 """
-
+ 
 import json
 from enum import Enum
-
-# Para implemnetaciones futuras, se podrían agregar más modos o gestos sin romper la compatibilidad.
+ 
+ 
 class Modo(Enum):
     GAME   = "ppt"
     MIRROR = "espejo"
-
-# Los gestos reconocidos en modo juego
+ 
+ 
 class Gestos(Enum):
     ROCK     = "piedra"
     PAPER    = "papel"
     SCISSORS = "tijera"
     UNKNOWN  = "desconocido"
-
-
-
+ 
+ 
 def encode_game(gesture):
-    """PC -> Pi: envía el gesto detectado en modo juego."""
+    """PC → Pi: envía el gesto detectado en modo juego."""
     msg = {"modo": Modo.GAME.value, "jugada": gesture.value}
     return json.dumps(msg).encode("utf-8")
-
-
+ 
+ 
 def encode_mirror(angles):
     """
-    PC -> Pi: envía los 6 ángulos de servo en modo mirror.
-    angles = [wrist, thumb, index, middle, ring, pinky]
+    PC → Pi: envía los 5 ángulos de servo en modo mirror.
+    angles = [thumb, index, middle, ring, pinky]  ← sin muñeca
     """
-    assert len(angles) == 6, "Se esperan exactamente 6 ángulos"
+    assert len(angles) == 5, "Se esperan exactamente 5 ángulos (sin muñeca)"
     msg = {"modo": Modo.MIRROR.value, "angulos": angles}
     return json.dumps(msg).encode("utf-8")
-
-
+ 
+ 
 def decode(data):
     """Pi: decodifica un mensaje recibido del socket."""
     return json.loads(data.decode("utf-8"))

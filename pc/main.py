@@ -21,7 +21,6 @@ from pc.backend import InterfazBrazo
 with open(r"C:\Users\kevin\Documents\ITESM\Diseno_de_Sistemas_en_Chip\RETO_FINAL\params.yaml", "r") as file:
     config = yaml.safe_load(file)
 
-# Configuración de la IP y puerto del socket TCP - Accedemos a través del archivo YAML
 DEFAULT_HOST = config["socket"]["host"]
 DEFAULT_PORT = config["socket"]["port"]
 
@@ -53,11 +52,16 @@ class AppController:
         self._gui.set_mode("JUEGO" if initial_mode == Modo.GAME else "TRACKING")
         self._gui.set_connection(self._client._sock is not None)
 
+        # Flags para recibir respuesta de la Pi en tick separado
+        self._waiting_response = False
+        self._last_jugador     = "?"
+        self._response_ticks   = 0
+
     def _set_game(self) -> None:
         self._detector.set_mode(Modo.GAME)
         self._gui.set_mode("JUEGO")
         self._gui.set_status("---")
-        self._gui.set_angles([0] * 6)
+        self._gui.set_angles([0] * 5)
         print("→ Modo JUEGO")
 
     def _set_mirror(self) -> None:
@@ -82,7 +86,7 @@ class AppController:
         if gesture != Gestos.UNKNOWN:
             self._gui.set_status(gesture.value)
 
-        # Enviar payload y actualizar UI
+        # Enviar payload
         if payload is not None:
             sent = self._client.send(payload)
             self._gui.set_connection(sent)
@@ -91,9 +95,30 @@ class AppController:
             tag = "[→ Pi]" if sent else "[local]"
             print(f"{tag} {msg}")
 
-            # Si hay ángulos (modo tracking), actualizar barras
+            # Ángulos en modo tracking
             if "angulos" in msg:
                 self._gui.set_angles(msg["angulos"])
+
+            # En modo juego, activar flag para leer respuesta en tick siguiente
+            if msg.get("modo") == "ppt" and sent:
+                self._waiting_response = True
+                self._last_jugador     = gesture.value if gesture != Gestos.UNKNOWN else "?"
+
+        # Leer respuesta pendiente de la Pi (reintenta hasta 30 ticks ~900ms)
+        if self._waiting_response:
+            self._response_ticks += 1
+            resp = self._client.receive()
+            if resp:
+                robot     = resp.get("robot", "?")
+                resultado = resp.get("resultado", "?")
+                self._gui.set_resultado(self._last_jugador, robot, resultado)
+                print(f"[← Pi] Robot: {robot} | {resultado}")
+                self._waiting_response = False
+                self._response_ticks   = 0
+            elif self._response_ticks > 30:
+                print("[Warn] No llegó respuesta de la Pi")
+                self._waiting_response = False
+                self._response_ticks   = 0
 
         self._gui.after(30, self._tick)
 

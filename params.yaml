@@ -1,11 +1,19 @@
 # Configuración del Socket para la comunicación entre la PC y la Rasp
 "socket": {
-    "host": "192.168.137.117",
+    "host": "172.20.10.12",
     "port": 5000
 }
 
 # Configuración del UART para la Rasp
 "serial": {
-    "port": "COM3",
-    "baudrate": 115200
+    "port": "/dev/ttyACM0",
+    "baudrate": 9600
+}
+# Configuración del juego
+"game": {
+  "hold_seconds": 1.5, # Tiempo que se debe mantener un gesto para que sea reconocido como válido
+  "confidence": 0.75, # Confianza mínima para reconocer un gesto
+  "tracking_confidence": 0.75 # Confianza mínima para el seguimiento de la mano
+
+
 }
