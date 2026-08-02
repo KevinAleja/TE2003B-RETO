@@ -5,7 +5,9 @@
 Control de una mano robótica de 6 servos mediante visión computacional.
 Detecta gestos de la mano en tiempo real (piedra, papel, tijera y réplica de movimiento)
 
-usando MediaPipe en la PC, transmite los comandos a una Raspberry Pi vía socket, la cual sirve como orquestador para que un ATmega328P pueda mover lo motores de cada parte de la mano (Dedos y muñeca)
+usando MediaPipe en la PC, transmite los comandos a una Raspberry Pi vía socket, la cual sirve como orquestador para que un ATmega328P pueda mover lo motores de cada parte de la mano.
+
+![brazo](images/prototipo.png)
 
 ---
 
@@ -31,7 +33,6 @@ Para la creación del ambiente virtual estoy usando UV pero sientete libre de us
 # Crea el entorno virtual con una versión de Python compatible
 uv venv --python 3.11
 
-
 # Activa el entorno
 # Linux/Raspbian:
 source .venv/bin/activate
@@ -44,7 +45,7 @@ uv pip install -r requirements.txt
 
 Para otro manejador de paquetes famosos como PIP:
 
-```bash 
+```bash
 # Con pip
 python -m venv 
 
@@ -84,24 +85,24 @@ La comunicación entre los diferentes modulos del sistema se da mediante dos pri
 Se recomienda ejecutar el siguiente comando en la terminal para podere escanear la red y poder localizar la IP donde la Raspberry pi esta conectada.
 
 
+``` bash 
+>1..254 | ForEach-Object {
+>     $ip = "172.20.10.$_"
+>     if (Test-Connection -ComputerName $ip -Count 1 -Quiet) {
+>         Write-Host "Dispositivo encontrado: $ip" >-ForegroundColor Green
+>    }
+> }
 
-'''bash 
-1..254 | ForEach-Object {
->>     $ip = "172.20.10.$_"
->>     if (Test-Connection -ComputerName $ip -Count 1 -Quiet) {
->>         Write-Host "Dispositivo encontrado: $ip" -ForegroundColor Green
->>     }
->> }
-'''
+```
 ---
 
 ## Hardware
 
 El Hardware consta de:
 - RaspBerry Pi 5
-- Microcontrolador ATMEGA328P 
-- 6 Servo Motores de 2.2Kg de torque
-    - 1 para la muñeca 
+- Microcontrolador Arduino Uno 
+- Fuente de alimencion de 5V
+- 5 Servo Motores de 2.2Kg de torque
     - 1 para cada dedo de la mano 
   
 

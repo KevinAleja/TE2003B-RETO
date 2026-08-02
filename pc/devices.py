@@ -121,14 +121,8 @@ def compute_angles(landmarks):
     ]
 
 
-# ── Socket client ─────────────────────────────────────────────────
 
 class SocketClient:
-    """
-    Wrapper sobre socket TCP con reconexión automática.
-    Si no hay Pi disponible (--no-socket), todas las operaciones son no-op.
-    """
-
     def __init__(self, host, port, enabled = True):
         self.host    = host
         self.port    = port
@@ -181,7 +175,7 @@ class SocketClient:
                 pass
         return None
 
-    def close(self) -> None:
+    def close(self):
         if self._sock:
             self._sock.close()
             self._sock = None
@@ -214,7 +208,7 @@ class HandDetector:
         self._gesture_start   = 0.0
         self._last_sent_at    = 0.0
 
-    def process_frame(self, frame: np.ndarray):
+    def process_frame(self, frame):
         """
         Procesa un frame BGR.
         Devuelve (frame_anotado, payload_bytes | None).
@@ -277,7 +271,7 @@ class HandDetector:
 
         return None
 
-    def _draw_ui(self, frame: np.ndarray):
+    def _draw_ui(self, frame):
         h, w = frame.shape[:2]
         label = f"MODO: {'JUEGO' if self.mode == Modo.GAME else 'TRACKING'}"
         cv2.rectangle(frame, (0, 0), (w, 40), (30, 30, 30), -1)
