@@ -57,20 +57,20 @@ class AppController:
         self._last_jugador     = "?"
         self._response_ticks   = 0
 
-    def _set_game(self) -> None:
+    def _set_game(self):
         self._detector.set_mode(Modo.GAME)
         self._gui.set_mode("JUEGO")
         self._gui.set_status("---")
         self._gui.set_angles([0] * 5)
         print("→ Modo JUEGO")
 
-    def _set_mirror(self) -> None:
+    def _set_mirror(self):
         self._detector.set_mode(Modo.MIRROR)
         self._gui.set_mode("TRACKING")
         self._gui.set_status("---")
         print("→ Modo TRACKING")
 
-    def _tick(self) -> None:
+    def _tick(self):
         ret, frame = self._cap.read()
         if not ret:
             self._gui.after(30, self._tick)
@@ -122,11 +122,11 @@ class AppController:
 
         self._gui.after(30, self._tick)
 
-    def run(self) -> None:
+    def run(self):
         self._gui.after(30, self._tick)
         self._gui.mainloop()
 
-    def _cleanup(self) -> None:
+    def _cleanup(self):
         print("Cerrando...")
         self._cap.release()
         self._detector.release()
